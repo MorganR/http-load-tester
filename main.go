@@ -7,6 +7,8 @@ import (
 	"log"
 	"net/url"
 	"os"
+
+	"github.com/MorganR/http-load-tester/load"
 )
 
 var (
@@ -24,9 +26,10 @@ func main() {
 		log.Fatalf("Failed to load urls: %v", err.Error())
 	}
 
-	for _, u := range urls {
-		log.Printf("Testing url %v", u)
-		// TODO: Use the URL
+	tester := load.NewTester()
+	err = tester.Init(urls)
+	if err != nil {
+		log.Fatalf("Failed to init the tester: %v", err.Error())
 	}
 }
 
