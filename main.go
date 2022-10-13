@@ -2,17 +2,20 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"flag"
 	"fmt"
 	"log"
 	"net/url"
 	"os"
+	"time"
 
 	"github.com/MorganR/http-load-tester/load"
 )
 
 var (
-	urlsFile = flag.String("urls_file", "", "The file to read URLs from, one per line.")
+	urlsFile       = flag.String("urls_file", "", "The file to read URLs from, one per line.")
+	maxConcurrency = flag.Int("c", 10, "Max concurrency to use in the load test.")
 )
 
 func main() {
@@ -30,6 +33,21 @@ func main() {
 	err = tester.Init(urls)
 	if err != nil {
 		log.Fatalf("Failed to init the tester: %v", err.Error())
+	}
+
+	cap := *maxConcurrency
+	if cap > 1000 {
+		log.Printf("Capping concurrency at %v", cap)
+		cap = 1000
+	}
+	for concurrency := 2; concurrency < *maxConcurrency; concurrency += concurrency {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		result, err := tester.Stress(ctx, concurrency)
+		if err != nil {
+			log.Fatalf("Stress test failed at concurrency %d: %v", concurrency, err.Error())
+		}
+		cancel()
+		log.Printf("Result at concurrency %v\n%s", concurrency, result)
 	}
 }
 
