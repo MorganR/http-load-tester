@@ -2,7 +2,10 @@ module github.com/MorganR/http-load-tester
 
 go 1.18
 
-require github.com/valyala/fasthttp v1.40.0
+require (
+	github.com/valyala/fasthttp v1.40.0
+	golang.org/x/sync v0.0.0-20220929204114-8fcdb60fdcc0
+)
 
 require (
 	github.com/andybalholm/brotli v1.0.4 // indirect
