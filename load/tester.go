@@ -53,10 +53,11 @@ type expectedResponseData struct {
 }
 
 // NewTester constructs a new tester object.
-func NewTester() *Tester {
+func NewTester(maxConcurrency int) *Tester {
 	return &Tester{
 		client: &fasthttp.Client{
-			Name: "http-load-tester",
+			Name:            "http-load-tester",
+			MaxConnsPerHost: maxConcurrency,
 			// Don't retry because we want to know if requests are failing.
 			RetryIf: func(r *fasthttp.Request) bool { return false },
 		},

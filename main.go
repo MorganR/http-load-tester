@@ -18,6 +18,8 @@ var (
 	maxConcurrency = flag.Int("c", 10, "Max concurrency to use in the load test.")
 )
 
+const absoluteMaxConcurrency = 512
+
 func main() {
 	flag.Parse()
 
@@ -28,27 +30,36 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load urls: %v", err.Error())
 	}
+	concurrencyCap := *maxConcurrency
+	if concurrencyCap > absoluteMaxConcurrency {
+		concurrencyCap = absoluteMaxConcurrency
+		log.Printf("Capping concurrency at %v", concurrencyCap)
+	}
 
-	tester := load.NewTester()
+	tester := load.NewTester(concurrencyCap)
 	err = tester.Init(urls)
 	if err != nil {
 		log.Fatalf("Failed to init the tester: %v", err.Error())
 	}
 
-	cap := *maxConcurrency
-	if cap > 1000 {
-		log.Printf("Capping concurrency at %v", cap)
-		cap = 1000
+	concurrency := 2
+	for ; concurrency <= concurrencyCap; concurrency += concurrency {
+		stressTestWithConcurrency(concurrency, tester)
 	}
-	for concurrency := 2; concurrency < *maxConcurrency; concurrency += concurrency {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		result, err := tester.Stress(ctx, concurrency)
-		if err != nil {
-			log.Fatalf("Stress test failed at concurrency %d: %v", concurrency, err.Error())
-		}
-		cancel()
-		log.Printf("Result at concurrency %v\n%s", concurrency, result)
+	if concurrency/2 != concurrencyCap {
+		// Run one more at the cap, if the cap is not a multiple of 2
+		stressTestWithConcurrency(concurrencyCap, tester)
 	}
+}
+
+func stressTestWithConcurrency(concurrency int, tester *load.Tester) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	result, err := tester.Stress(ctx, concurrency)
+	if err != nil {
+		log.Fatalf("Stress test failed at concurrency %d: %v", concurrency, err.Error())
+	}
+	cancel()
+	log.Printf("Result at concurrency %v\n%s", concurrency, result)
 }
 
 func loadAndValidateURLs(filename string) ([]string, error) {
