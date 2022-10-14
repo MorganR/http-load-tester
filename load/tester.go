@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"net/http"
 	"sort"
 	"strings"
 	"time"
@@ -40,6 +41,8 @@ type AggregateResult struct {
 	NumCalls           int64
 	TotalBytesReceived int64
 	TotalLatency       time.Duration
+	MaxLatency         time.Duration
+	MinLatency         time.Duration
 }
 
 type urlResult struct {
@@ -70,20 +73,23 @@ func NewTester(maxConcurrency int) *Tester {
 func (t *Tester) Init(urls []string) error {
 	t.urls = urls
 	t.responseByUrl = make(map[string]expectedResponseData)
-	buffer := make([]byte, 0, bufferSize)
+	req := fasthttp.AcquireRequest()
 	log.Println("Expected response for URLs:")
 	for _, u := range urls {
-		code, body, err := t.client.Get(buffer, u)
+		req.Reset()
+		prepRequest(req, u)
+		resp := fasthttp.AcquireResponse()
+		err := t.client.Do(req, resp)
 		if err != nil {
 			return fmt.Errorf("failed to fetch url %v: %v", u, err.Error())
 		}
-		bodyLen := len(body)
+		bodyLen := len(resp.Body())
 		t.responseByUrl[u] = expectedResponseData{
-			StatusCode: code,
+			StatusCode: resp.StatusCode(),
 			MinLength:  bodyLen - bodyLengthAllowedChange,
 			MaxLength:  bodyLen + bodyLengthAllowedChange,
 		}
-		log.Printf("%v | %v", code, u)
+		log.Printf("%v | %v", resp.StatusCode(), u)
 	}
 	return nil
 }
@@ -128,12 +134,15 @@ func (r *StressResult) String() string {
 	urlHeading := "URL"
 	successHeading := "Count Success"
 	failureHeading := "Count Failure"
+	minLatencyHeading := "Min Latency (ms)"
 	latencyHeading := "Avg Latency (ms)"
-	bytesHeading := "Avg Bytes / s"
-	headerFormatString := fmt.Sprintf("%%-%ds | %%%ds | %%%ds | %%%ds | %%%ds\n", lenLongestUrl, len(successHeading), len(failureHeading), len(latencyHeading), len(bytesHeading))
-	dataFormatString := fmt.Sprintf("%%-%ds | %%%dd | %%%dd | %%%d.3f | %%%d.3f\n", lenLongestUrl, len(successHeading), len(failureHeading), len(latencyHeading), len(bytesHeading))
-	b.WriteString(fmt.Sprintf(headerFormatString, urlHeading, successHeading, failureHeading, latencyHeading, bytesHeading))
-	b.WriteString(fmt.Sprintf(headerFormatString, strings.Repeat("-", lenLongestUrl), strings.Repeat("-", len(successHeading)), strings.Repeat("-", len(failureHeading)), strings.Repeat("-", len(latencyHeading)), strings.Repeat("-", len(bytesHeading))))
+	maxLatencyHeading := "Max Latency (ms)"
+	bytesHeading := "Bytes Per Resp"
+	bytesPSHeading := "Avg Bytes / s"
+	headerFormatString := fmt.Sprintf("%%-%ds | %%%ds | %%%ds | %%%ds | %%%ds | %%%ds | %%%ds | %%%ds\n", lenLongestUrl, len(successHeading), len(failureHeading), len(minLatencyHeading), len(latencyHeading), len(maxLatencyHeading), len(bytesHeading), len(bytesPSHeading))
+	dataFormatString := fmt.Sprintf("%%-%ds | %%%dd | %%%dd | %%%d.3f | %%%d.3f | %%%d.3f | %%%dd | %%%d.3f\n", lenLongestUrl, len(successHeading), len(failureHeading), len(minLatencyHeading), len(latencyHeading), len(maxLatencyHeading), len(bytesHeading), len(bytesPSHeading))
+	b.WriteString(fmt.Sprintf(headerFormatString, urlHeading, successHeading, failureHeading, minLatencyHeading, latencyHeading, maxLatencyHeading, bytesHeading, bytesPSHeading))
+	b.WriteString(fmt.Sprintf(headerFormatString, strings.Repeat("-", lenLongestUrl), strings.Repeat("-", len(successHeading)), strings.Repeat("-", len(failureHeading)), strings.Repeat("-", len(minLatencyHeading)), strings.Repeat("-", len(latencyHeading)), strings.Repeat("-", len(maxLatencyHeading)), strings.Repeat("-", len(bytesHeading)), strings.Repeat("-", len(bytesPSHeading))))
 	urls := maps.Keys(r.ResultsByUrl)
 	sort.Strings(urls)
 	for _, u := range urls {
@@ -142,8 +151,18 @@ func (r *StressResult) String() string {
 		if numSucessfulCalls == 0 {
 			numSucessfulCalls = 1
 		}
-		successMillis := float64(ur.Successes.TotalLatency.Microseconds()) / 1000.0
-		b.WriteString(fmt.Sprintf(dataFormatString, u, ur.Successes.NumCalls, ur.Failures.NumCalls, successMillis/float64(numSucessfulCalls), float64(ur.Successes.TotalBytesReceived)/successMillis))
+		successMillis := toMillisAtMicroPrecision(ur.Successes.TotalLatency)
+		b.WriteString(
+			fmt.Sprintf(
+				dataFormatString,
+				u,
+				ur.Successes.NumCalls,
+				ur.Failures.NumCalls,
+				ur.Successes.minLatencyMillis(),
+				ur.Successes.averageLatencyMillis(),
+				ur.Successes.maxLatencyMillis(),
+				ur.Successes.TotalBytesReceived/numSucessfulCalls,
+				float64(ur.Successes.TotalBytesReceived)/successMillis))
 	}
 	return b.String()
 }
@@ -186,12 +205,40 @@ func (r *AggregateResult) merge(other *AggregateResult) {
 	r.NumCalls += other.NumCalls
 	r.TotalBytesReceived += other.TotalBytesReceived
 	r.TotalLatency += other.TotalLatency
+	if other.MaxLatency > r.MaxLatency {
+		r.MaxLatency = other.MaxLatency
+	}
+	if other.MinLatency < r.MinLatency || r.MinLatency == 0 {
+		r.MinLatency = other.MinLatency
+	}
 }
 
 func (r *AggregateResult) add(toAdd *urlResult) {
 	r.NumCalls += 1
 	r.TotalBytesReceived += int64(toAdd.bytesReceived)
 	r.TotalLatency += toAdd.latency
+	if toAdd.latency > r.MaxLatency {
+		r.MaxLatency = toAdd.latency
+	}
+	if toAdd.latency < r.MinLatency || r.MinLatency == 0 {
+		r.MinLatency = toAdd.latency
+	}
+}
+
+func (r *AggregateResult) minLatencyMillis() float64 {
+	return toMillisAtMicroPrecision(r.MinLatency)
+}
+
+func (r *AggregateResult) maxLatencyMillis() float64 {
+	return toMillisAtMicroPrecision(r.MaxLatency)
+}
+
+func (r *AggregateResult) averageLatencyMillis() float64 {
+	return toMillisAtMicroPrecision(r.TotalLatency) / float64(r.NumCalls)
+}
+
+func toMillisAtMicroPrecision(d time.Duration) float64 {
+	return float64(d.Microseconds()) / 1000.0
 }
 
 func (exp *expectedResponseData) isValid(code int, body []byte) bool {
@@ -235,17 +282,27 @@ func (t *Tester) randomURL() string {
 }
 
 func (t *Tester) fetchAndVerifyUrl(buffer []byte, u string) (urlResult, error) {
+	req := fasthttp.AcquireRequest()
+	resp := fasthttp.AcquireResponse()
+	prepRequest(req, u)
 	start := time.Now()
-	code, body, err := t.client.Get(buffer, u)
+	err := t.client.Do(req, resp)
 	end := time.Now()
 	if err != nil {
 		return urlResult{}, err
 	}
 
 	exp := t.responseByUrl[u]
+	body := resp.Body()
 	return urlResult{
-		isValid:       exp.isValid(code, body),
+		isValid:       exp.isValid(resp.StatusCode(), body),
 		bytesReceived: len(body),
 		latency:       end.Sub(start),
 	}, nil
+}
+
+func prepRequest(req *fasthttp.Request, url string) {
+	req.SetRequestURI(url)
+	req.Header.SetMethod(http.MethodGet)
+	req.Header.Add("Accept-Encoding", "gzip, deflate, br")
 }
