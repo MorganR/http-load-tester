@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	urlsFile       = flag.String("urls_file", "", "The file to read URLs from, one per line.")
+	host           = flag.String("host", "", "The host to connect to.")
+	pathsFile      = flag.String("paths_file", "", "The file to read URL paths from, one per line.")
 	maxConcurrency = flag.Int("c", 10, "Max concurrency to use in the load test.")
 )
 
@@ -23,10 +24,14 @@ const absoluteMaxConcurrency = 512
 func main() {
 	flag.Parse()
 
-	if urlsFile == nil || *urlsFile == "" {
-		log.Fatalf("URLs must be provided.")
+	if host == nil || *host == "" {
+		log.Fatal("A value for host must be provided.")
 	}
-	urls, err := loadAndValidateURLs(*urlsFile)
+
+	if pathsFile == nil || *pathsFile == "" {
+		log.Fatalf("URL paths must be provided.")
+	}
+	urls, err := loadAndValidateURLs(*host, *pathsFile)
 	if err != nil {
 		log.Fatalf("Failed to load urls: %v", err.Error())
 	}
@@ -62,7 +67,7 @@ func stressTestWithConcurrency(concurrency int, tester *load.Tester) {
 	log.Printf("Result at concurrency %v\n%s", concurrency, result)
 }
 
-func loadAndValidateURLs(filename string) ([]string, error) {
+func loadAndValidateURLs(host, filename string) ([]string, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %v: %v", filename, err.Error())
@@ -71,7 +76,7 @@ func loadAndValidateURLs(filename string) ([]string, error) {
 	urls := make([]string, 0)
 	for s.Scan() {
 		l := s.Text()
-		u, err := url.Parse(l)
+		u, err := url.Parse(host + l)
 		if err != nil {
 			return nil, fmt.Errorf("could not parse url %v. Error: %v", l, err.Error())
 		}
