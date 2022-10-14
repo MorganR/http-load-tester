@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log"
 	"math/rand"
+	"sort"
 	"strings"
 	"time"
 
 	"github.com/valyala/fasthttp"
+	"golang.org/x/exp/maps"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -128,17 +130,20 @@ func (r *StressResult) String() string {
 	failureHeading := "Count Failure"
 	latencyHeading := "Avg Latency (ms)"
 	bytesHeading := "Avg Bytes / s"
-	headerFormatString := fmt.Sprintf("%%%ds | %%%ds | %%%ds | %%%ds | %%%ds\n", lenLongestUrl, len(successHeading), len(failureHeading), len(latencyHeading), len(bytesHeading))
-	dataFormatString := fmt.Sprintf("%%%ds | %%%dd | %%%dd | %%%d.3f | %%%d.3f\n", lenLongestUrl, len(successHeading), len(failureHeading), len(latencyHeading), len(bytesHeading))
+	headerFormatString := fmt.Sprintf("%%-%ds | %%%ds | %%%ds | %%%ds | %%%ds\n", lenLongestUrl, len(successHeading), len(failureHeading), len(latencyHeading), len(bytesHeading))
+	dataFormatString := fmt.Sprintf("%%-%ds | %%%dd | %%%dd | %%%d.3f | %%%d.3f\n", lenLongestUrl, len(successHeading), len(failureHeading), len(latencyHeading), len(bytesHeading))
 	b.WriteString(fmt.Sprintf(headerFormatString, urlHeading, successHeading, failureHeading, latencyHeading, bytesHeading))
 	b.WriteString(fmt.Sprintf(headerFormatString, strings.Repeat("-", lenLongestUrl), strings.Repeat("-", len(successHeading)), strings.Repeat("-", len(failureHeading)), strings.Repeat("-", len(latencyHeading)), strings.Repeat("-", len(bytesHeading))))
-	for u, r := range r.ResultsByUrl {
-		numSucessfulCalls := r.Successes.NumCalls
+	urls := maps.Keys(r.ResultsByUrl)
+	sort.Strings(urls)
+	for _, u := range urls {
+		ur := r.ResultsByUrl[u]
+		numSucessfulCalls := ur.Successes.NumCalls
 		if numSucessfulCalls == 0 {
 			numSucessfulCalls = 1
 		}
-		successMillis := float64(r.Successes.TotalLatency.Microseconds()) / 1000.0
-		b.WriteString(fmt.Sprintf(dataFormatString, u, r.Successes.NumCalls, r.Failures.NumCalls, successMillis/float64(numSucessfulCalls), float64(r.Successes.TotalBytesReceived)/successMillis))
+		successMillis := float64(ur.Successes.TotalLatency.Microseconds()) / 1000.0
+		b.WriteString(fmt.Sprintf(dataFormatString, u, ur.Successes.NumCalls, ur.Failures.NumCalls, successMillis/float64(numSucessfulCalls), float64(ur.Successes.TotalBytesReceived)/successMillis))
 	}
 	return b.String()
 }
