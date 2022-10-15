@@ -123,7 +123,37 @@ func (t *Tester) Stress(ctx context.Context, concurrency int) (*StressResult, er
 	return results, nil
 }
 
-// String pretty-prints the key StressResult data as a table.
+// Summary provides the summary results over all URLs.
+func (r *StressResult) Summary() ResultWithValidity {
+	summary := ResultWithValidity{}
+	for _, ur := range r.ResultsByUrl {
+		summary.merge(ur)
+	}
+	return summary
+}
+
+// SummaryString provides aggregate statistics as a string.
+func (r *StressResult) SummaryString() string {
+	summary := r.Summary()
+	b := strings.Builder{}
+	b.WriteString("Count Success: ")
+	b.WriteString(strconv.FormatInt(summary.Successes.NumCalls, 10))
+	b.WriteString("\nCount Failure: ")
+	b.WriteString(strconv.FormatInt(summary.Failures.NumCalls, 10))
+	b.WriteString("\nMin success latency (ms): ")
+	b.WriteString(fmt.Sprintf("%.3f", summary.Successes.minLatencyMillis()))
+	b.WriteString("\nAvg success latency (ms): ")
+	b.WriteString(fmt.Sprintf("%.3f", summary.Successes.averageLatencyMillis()))
+	b.WriteString("\nMax success latency (ms): ")
+	b.WriteString(fmt.Sprintf("%.3f", summary.Successes.maxLatencyMillis()))
+	b.WriteString("\nAvg bytes per response: ")
+	b.WriteString(fmt.Sprintf("%.3f", float64(summary.Successes.TotalBytesReceived)/float64(summary.Successes.NumCalls)))
+	b.WriteString("\nAvg bytes per second: ")
+	b.WriteString(fmt.Sprintf("%.3f", float64(summary.Successes.TotalBytesReceived)/summary.Successes.averageLatencyMillis()))
+	return b.String()
+}
+
+// String pretty-prints the key StressResult data per URL as a table.
 func (r *StressResult) String() string {
 	b := strings.Builder{}
 	lenLongestUrl := 0

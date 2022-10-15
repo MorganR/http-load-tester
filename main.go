@@ -95,7 +95,7 @@ func stressTestWithConcurrency(concurrency int, tester *load.Tester) bool {
 		log.Fatalf("Stress test failed at concurrency %d: %v", concurrency, err.Error())
 	}
 	cancel()
-	log.Printf("Result at concurrency %v\n%s", concurrency, result)
+	log.Printf("Result at concurrency %v\n%v\nDetails:\n%s", concurrency, result.SummaryString(), result)
 	numSuccess := int64(0)
 	numFailures := int64(0)
 	for _, r := range result.ResultsByUrl {
