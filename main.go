@@ -8,13 +8,17 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/MorganR/http-load-tester/load"
 )
 
+const pathSeparator = "\\"
+
 var (
 	host           = flag.String("host", "", "The host to connect to.")
+	paths          = flag.String("paths", "", "Backslash (\\) separated paths to query.")
 	pathsFile      = flag.String("paths_file", "", "The file to read URL paths from, one per line.")
 	maxConcurrency = flag.Int("c", 10, "Max concurrency to use in the load test.")
 )
@@ -24,16 +28,20 @@ const absoluteMaxConcurrency = 512
 func main() {
 	flag.Parse()
 
-	if host == nil || *host == "" {
+	if *host == "" {
 		log.Fatal("A value for host must be provided.")
 	}
 
-	if pathsFile == nil || *pathsFile == "" {
-		log.Fatalf("URL paths must be provided.")
-	}
-	urls, err := loadAndValidateURLs(*host, *pathsFile)
+	urls, err := constructURLs(*host, strings.Split(*paths, pathSeparator))
 	if err != nil {
-		log.Fatalf("Failed to load urls: %v", err.Error())
+		log.Fatalf("Failed to construct urls from paths flag. Error: %v", err.Error())
+	}
+	if *pathsFile != "" {
+		moreUrls, err := loadAndValidateURLsFromFile(*host, *pathsFile)
+		if err != nil {
+			log.Fatalf("Failed to load urls: %v", err.Error())
+		}
+		urls = append(urls, moreUrls...)
 	}
 	concurrencyCap := *maxConcurrency
 	if concurrencyCap > absoluteMaxConcurrency {
@@ -67,7 +75,19 @@ func stressTestWithConcurrency(concurrency int, tester *load.Tester) {
 	log.Printf("Result at concurrency %v\n%s", concurrency, result)
 }
 
-func loadAndValidateURLs(host, filename string) ([]string, error) {
+func constructURLs(host string, paths []string) ([]string, error) {
+	urls := make([]string, 0, len(paths))
+	for _, p := range paths {
+		u, err := url.Parse(host + p)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse URL; %v", err.Error())
+		}
+		urls = append(urls, u.String())
+	}
+	return urls, nil
+}
+
+func loadAndValidateURLsFromFile(host, filename string) ([]string, error) {
 	f, err := os.Open(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open file %v: %v", filename, err.Error())
