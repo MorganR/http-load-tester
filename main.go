@@ -63,11 +63,13 @@ func main() {
 	}
 
 	concurrency := 2
+	lastConcurrency := 1
 	shouldContinue := true
 	for ; concurrency <= concurrencyCap && shouldContinue; concurrency = increaseConcurrency(concurrency) {
 		shouldContinue = stressTestWithConcurrency(concurrency, tester)
+		lastConcurrency = concurrency
 	}
-	if concurrency/2 != concurrencyCap {
+	if shouldContinue && lastConcurrency != concurrencyCap {
 		// Run one more at the cap, if the cap is not a multiple of 2
 		stressTestWithConcurrency(concurrencyCap, tester)
 	}
