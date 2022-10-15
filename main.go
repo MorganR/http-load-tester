@@ -24,6 +24,7 @@ var (
 	rampStyle      = flag.String("ramp_style", "doubling", "Determines how concurrency ramps. Either 'linear' or 'doubling'.")
 	linearRampStep = flag.Int("linear_ramp_step", 5, "The amount that concurrency increases at each stage. Only applies if ramp_style is linear.")
 	stageDelay     = flag.Duration("stage_delay", 10*time.Second, "How long to send requests at each degree of concurrency.")
+	errorThreshold = flag.Float64("err_threshold", 0.05, "The error rate at which the stress test will be canceled, even if the max concurrency has not yet been reached.")
 )
 
 const absoluteMaxConcurrency = 512
@@ -51,6 +52,9 @@ func main() {
 		concurrencyCap = absoluteMaxConcurrency
 		log.Printf("Capping concurrency at %v", concurrencyCap)
 	}
+	if *errorThreshold <= 0 || *errorThreshold > 1.0 {
+		log.Fatalf("err_threshold must be > 0 and <= 1.0. Received %.3f", *errorThreshold)
+	}
 
 	tester := load.NewTester(concurrencyCap)
 	err = tester.Init(urls)
@@ -59,8 +63,9 @@ func main() {
 	}
 
 	concurrency := 2
-	for ; concurrency <= concurrencyCap; concurrency = increaseConcurrency(concurrency) {
-		stressTestWithConcurrency(concurrency, tester)
+	shouldContinue := true
+	for ; concurrency <= concurrencyCap && shouldContinue; concurrency = increaseConcurrency(concurrency) {
+		shouldContinue = stressTestWithConcurrency(concurrency, tester)
 	}
 	if concurrency/2 != concurrencyCap {
 		// Run one more at the cap, if the cap is not a multiple of 2
@@ -80,7 +85,8 @@ func increaseConcurrency(current int) int {
 	}
 }
 
-func stressTestWithConcurrency(concurrency int, tester *load.Tester) {
+// Returns true if the test should continue.
+func stressTestWithConcurrency(concurrency int, tester *load.Tester) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), *stageDelay)
 	result, err := tester.Stress(ctx, concurrency)
 	if err != nil {
@@ -88,6 +94,22 @@ func stressTestWithConcurrency(concurrency int, tester *load.Tester) {
 	}
 	cancel()
 	log.Printf("Result at concurrency %v\n%s", concurrency, result)
+	numSuccess := int64(0)
+	numFailures := int64(0)
+	for _, r := range result.ResultsByUrl {
+		numSuccess += r.Successes.NumCalls
+		numFailures += r.Failures.NumCalls
+	}
+	if numSuccess == 0 {
+		log.Printf("No successful calls at concurrency %v", concurrency)
+		return false
+	}
+	errRate := float64(numFailures) / float64(numSuccess)
+	if errRate > *errorThreshold {
+		log.Printf("Error rate over threshold at concurrency %v. Rate: %.3f", concurrency, errRate)
+		return false
+	}
+	return true
 }
 
 func constructURLs(host string, paths []string) ([]string, error) {
