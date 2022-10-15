@@ -21,6 +21,7 @@ var (
 	paths          = flag.String("paths", "", "Backslash (\\) separated paths to query.")
 	pathsFile      = flag.String("paths_file", "", "The file to read URL paths from, one per line.")
 	maxConcurrency = flag.Int("c", 10, "Max concurrency to use in the load test.")
+	stageDelay     = flag.Duration("stage_delay", 10*time.Second, "How long to send requests at each degree of concurrency.")
 )
 
 const absoluteMaxConcurrency = 512
@@ -66,7 +67,7 @@ func main() {
 }
 
 func stressTestWithConcurrency(concurrency int, tester *load.Tester) {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), *stageDelay)
 	result, err := tester.Stress(ctx, concurrency)
 	if err != nil {
 		log.Fatalf("Stress test failed at concurrency %d: %v", concurrency, err.Error())
