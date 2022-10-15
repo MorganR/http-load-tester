@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,7 @@ import (
 
 const bodyLengthAllowedChange = 10
 const bufferSize = 16 << 10
+const clientName = "http-load-tester"
 
 // Tester tests some URLs, performing basic validation as it goes.
 type Tester struct {
@@ -97,6 +99,7 @@ func (t *Tester) Init(urls []string) error {
 // Stress tests the urls in this tester by sending concurrent requests until the given context is
 // canceled.
 func (t *Tester) Stress(ctx context.Context, concurrency int) (*StressResult, error) {
+	t.client.Name = clientName + "-" + strconv.Itoa(concurrency)
 	g, ctx := errgroup.WithContext(ctx)
 
 	resultChan := make(chan StressResult)
