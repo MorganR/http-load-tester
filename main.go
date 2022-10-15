@@ -17,10 +17,12 @@ import (
 const pathSeparator = "\\"
 
 var (
-	host           = flag.String("host", "", "The host to connect to.")
+	host           = flag.String("host", "", "The host to connect to. Must include the scheme.")
 	paths          = flag.String("paths", "", "Backslash (\\) separated paths to query.")
 	pathsFile      = flag.String("paths_file", "", "The file to read URL paths from, one per line.")
 	maxConcurrency = flag.Int("c", 10, "Max concurrency to use in the load test.")
+	rampStyle      = flag.String("ramp_style", "doubling", "Determines how concurrency ramps. Either 'linear' or 'doubling'.")
+	linearRampStep = flag.Int("linear_ramp_step", 5, "The amount that concurrency increases at each stage. Only applies if ramp_style is linear.")
 	stageDelay     = flag.Duration("stage_delay", 10*time.Second, "How long to send requests at each degree of concurrency.")
 )
 
@@ -57,12 +59,24 @@ func main() {
 	}
 
 	concurrency := 2
-	for ; concurrency <= concurrencyCap; concurrency += concurrency {
+	for ; concurrency <= concurrencyCap; concurrency = increaseConcurrency(concurrency) {
 		stressTestWithConcurrency(concurrency, tester)
 	}
 	if concurrency/2 != concurrencyCap {
 		// Run one more at the cap, if the cap is not a multiple of 2
 		stressTestWithConcurrency(concurrencyCap, tester)
+	}
+}
+
+func increaseConcurrency(current int) int {
+	switch *rampStyle {
+	case "linear":
+		return current + *linearRampStep
+	case "doubling":
+		return current + current
+	default:
+		log.Fatalf("ramp_style must be set to a valid value (linear or doubling). Received: %v", *rampStyle)
+		return 1
 	}
 }
 
