@@ -154,10 +154,12 @@ func (r *StressResult) SummaryString() string {
 	b.WriteString(fmt.Sprintf("%.3f", summary.Successes.averageLatencyMillis()))
 	b.WriteString("\nMax success latency (ms): ")
 	b.WriteString(fmt.Sprintf("%.3f", summary.Successes.maxLatencyMillis()))
-	b.WriteString("\nAvg bytes per response: ")
+	b.WriteString("\nAvg success bytes per response: ")
 	b.WriteString(fmt.Sprintf("%.3f", float64(summary.Successes.TotalBytesReceived)/float64(summary.Successes.NumCalls)))
-	b.WriteString("\nAvg bytes per second: ")
+	b.WriteString("\nAvg success bytes per second: ")
 	b.WriteString(fmt.Sprintf("%.3f", float64(summary.Successes.TotalBytesReceived)/summary.Successes.averageLatencyMillis()))
+	b.WriteString("\nAvg error latency (ms): ")
+	b.WriteString(fmt.Sprintf("%.3f", summary.Failures.averageLatencyMillis()))
 	return b.String()
 }
 
