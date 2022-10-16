@@ -2,6 +2,7 @@ package load
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -77,6 +78,7 @@ func (t *Tester) Init(urls []string) error {
 	t.responseByUrl = make(map[string]expectedResponseData)
 	req := fasthttp.AcquireRequest()
 	log.Println("Expected response for URLs:")
+	atLeastOneSucceeded := false
 	for _, u := range urls {
 		req.Reset()
 		prepRequest(req, u, 1)
@@ -92,6 +94,12 @@ func (t *Tester) Init(urls []string) error {
 			MaxLength:  bodyLen + bodyLengthAllowedChange,
 		}
 		log.Printf("%v | %v", resp.StatusCode(), u)
+		if resp.StatusCode() >= 200 && resp.StatusCode() < 300 {
+			atLeastOneSucceeded = true
+		}
+	}
+	if !atLeastOneSucceeded {
+		return errors.New("all requests failed")
 	}
 	return nil
 }
