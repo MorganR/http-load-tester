@@ -79,9 +79,10 @@ func (t *Tester) Init(urls []string) error {
 	req := fasthttp.AcquireRequest()
 	log.Println("Expected response for URLs:")
 	atLeastOneSucceeded := false
+	clientName := clientName + "-1"
 	for _, u := range urls {
 		req.Reset()
-		prepRequest(req, u, 1)
+		prepRequest(req, u, clientName)
 		resp := fasthttp.AcquireResponse()
 		err := t.client.Do(req, resp)
 		if err != nil {
@@ -289,6 +290,7 @@ func (exp *expectedResponseData) isValid(code int, body []byte) bool {
 }
 
 func (t *Tester) fetchRandomUrls(ctx context.Context, concurrency int, rc chan StressResult) error {
+	name := clientName + "-" + strconv.Itoa(concurrency)
 	result := newStressResult()
 	isDone := false
 	for {
@@ -303,7 +305,7 @@ func (t *Tester) fetchRandomUrls(ctx context.Context, concurrency int, rc chan S
 		}
 
 		u := t.randomURL()
-		r, err := t.fetchAndVerifyUrl(u, concurrency)
+		r, err := t.fetchAndVerifyUrl(u, name)
 		if err != nil {
 			rc <- StressResult{}
 			return err
@@ -321,10 +323,10 @@ func (t *Tester) randomURL() string {
 	return t.urls[i]
 }
 
-func (t *Tester) fetchAndVerifyUrl(u string, concurrency int) (urlResult, error) {
+func (t *Tester) fetchAndVerifyUrl(u string, name string) (urlResult, error) {
 	req := fasthttp.AcquireRequest()
 	resp := fasthttp.AcquireResponse()
-	prepRequest(req, u, concurrency)
+	prepRequest(req, u, name)
 	start := time.Now()
 	err := t.client.Do(req, resp)
 	end := time.Now()
@@ -341,9 +343,9 @@ func (t *Tester) fetchAndVerifyUrl(u string, concurrency int) (urlResult, error)
 	}, nil
 }
 
-func prepRequest(req *fasthttp.Request, url string, concurrency int) {
+func prepRequest(req *fasthttp.Request, url string, name string) {
 	req.SetRequestURI(url)
-	req.Header.SetUserAgent(clientName + "-" + strconv.Itoa(concurrency))
+	req.Header.SetUserAgent(name)
 	req.Header.SetMethod(http.MethodGet)
 	req.Header.Add("Accept-Encoding", "gzip, deflate, br")
 }
