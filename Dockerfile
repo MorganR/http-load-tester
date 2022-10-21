@@ -1,16 +1,15 @@
 # syntax=docker/dockerfile:1
 
 ### Build the server
-FROM golang:1.19-alpine AS builder
+FROM rust:bullseye AS builder
 
 WORKDIR /app
 COPY . ./
 
 # Compile binary
-RUN go mod download && go mod verify
-RUN go build -o /stresser .
+RUN cargo build --release
 
-FROM alpine:latest
+FROM debian:bullseye
 WORKDIR /app
-COPY --from=builder /stresser ./
-ENTRYPOINT ["./stresser"]
+COPY --from=builder /app/target/release/http-load-tester ./
+ENTRYPOINT ["./http-load-tester"]
