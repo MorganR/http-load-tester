@@ -67,8 +67,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     configuration.startup_time = options.start_time;
     configuration.run_time = options.run_time;
 
-    println!("Defaults: {:?}", configuration);
-
     GooseAttack::initialize_with_config(configuration)?
         .register_scenario(scenario!("LoadtestTransactions")
             .register_transaction(transaction!(loadtest_hello))
