@@ -39,24 +39,25 @@ fn maybe_prep_log_dir(maybe_log_dir: &Option<String>, maybe_report_name: &Option
     Ok(())
 }
 
-fn report_log_path(maybe_log_dir: &Option<String>, maybe_report_name: &Option<String>) -> PathBuf {
-    log_path(maybe_log_dir, maybe_report_name, "report.html")
+fn report_log_path(maybe_log_dir: &Option<String>, maybe_report_name: &Option<String>, iteration: usize) -> PathBuf {
+    log_path(maybe_log_dir, maybe_report_name, iteration, "report.html")
 }
 
-fn request_log_path(maybe_log_dir: &Option<String>, maybe_report_name: &Option<String>) -> PathBuf {
-    log_path(maybe_log_dir, maybe_report_name, "requests.csv")
+fn request_log_path(maybe_log_dir: &Option<String>, maybe_report_name: &Option<String>, iteration: usize) -> PathBuf {
+    log_path(maybe_log_dir, maybe_report_name, iteration, "requests.csv")
 }
 
-fn log_path(maybe_log_dir: &Option<String>, maybe_report_name: &Option<String>, suffix: &str) -> PathBuf {
+fn log_path(maybe_log_dir: &Option<String>, maybe_report_name: &Option<String>, iteration: usize, suffix: &str) -> PathBuf {
     let mut path_buf = compute_logs_path(maybe_log_dir, maybe_report_name);
-    path_buf.push(suffix);
+    path_buf.push(format!("{}-{}", iteration, suffix));
     path_buf
 }
 
 async fn maybe_copy_to_gcs(
-    maybe_bucket_name: Option<String>,
-    maybe_report_name: Option<String>,
-    maybe_log_dir: Option<String>) -> Result<(), Box<dyn Error>> {
+    maybe_bucket_name: &Option<String>,
+    maybe_report_name: &Option<String>,
+    maybe_log_dir: &Option<String>,
+    iteration: usize) -> Result<(), Box<dyn Error>> {
     let bucket_name = match maybe_bucket_name {
         Some(b) => b,
         _ => return Ok(())
@@ -66,7 +67,7 @@ async fn maybe_copy_to_gcs(
     }
     let client = Client::new();
 
-    let report_path = report_log_path(&maybe_log_dir, &maybe_report_name);
+    let report_path = report_log_path(maybe_log_dir, maybe_report_name, iteration);
     let f = fs::read(&report_path)?;
     client.object().create(
         bucket_name.as_str(),
@@ -74,7 +75,7 @@ async fn maybe_copy_to_gcs(
         report_path.file_name().unwrap().to_str().unwrap(),
         "text/html").await?;
 
-    let request_csv_path = request_log_path(&maybe_log_dir, &maybe_report_name);
+    let request_csv_path = request_log_path(maybe_log_dir, maybe_report_name, iteration);
     let f = fs::read(&request_csv_path)?;
     client.object().create(
         bucket_name.as_str(),
@@ -103,30 +104,41 @@ async fn main() -> Result<(), Box<dyn Error>> {
         optional --report_name rn: String
         /// The local directory to write metrics to. Uses /tmp/ if unset. A subdirectory may be added via --report_name.
         optional --log_dir ld: String
+        /// Number of iterations to run. Defaults to 1.
+        optional --iterations i: usize
+    };
+
+    let iterations_end = match options.iterations {
+        Some(i) => i + 1,
+        _ => 2
     };
 
     maybe_prep_log_dir(&options.log_dir, &options.report_name)?;
 
-    let mut configuration = config::GooseConfiguration::default();
-    configuration.host = options.host;
-    configuration.report_file = report_log_path(&options.log_dir, &options.report_name).to_str().unwrap().to_string();
-    // Max 10 second timeout per request.
-    configuration.timeout = Some("10".to_string());
-    configuration.users = Some(options.users);
-    configuration.startup_time = options.start_time;
-    configuration.run_time = options.run_time;
-    configuration.request_log = request_log_path(&options.log_dir, &options.report_name).to_str().unwrap().to_string();
-    configuration.request_format = Some(REQUEST_LOG_FORMAT);
+    for i in 1..iterations_end {
+        print!("Commencing iteration {}", i);
+        let mut configuration = config::GooseConfiguration::default();
+        configuration.host = options.host.clone();
+        configuration.report_file = report_log_path(&options.log_dir, &options.report_name, i).to_str().unwrap().to_string();
+        // Max 10 second timeout per request.
+        configuration.timeout = Some("10".to_string());
+        configuration.users = Some(options.users);
+        configuration.startup_time = options.start_time.clone();
+        configuration.run_time = options.run_time.clone();
+        configuration.request_log = request_log_path(&options.log_dir, &options.report_name, i).to_str().unwrap().to_string();
+        configuration.request_format = Some(REQUEST_LOG_FORMAT);
 
-    GooseAttack::initialize_with_config(configuration)?
-        .register_scenario(scenario!("LoadtestTransactions")
-            .register_transaction(transaction!(loadtest_hello))
-            .register_transaction(transaction!(loadtest_static))
-        )
-        .execute()
-        .await?;
+        GooseAttack::initialize_with_config(configuration)?
+            .register_scenario(scenario!("LoadtestTransactions")
+                .register_transaction(transaction!(loadtest_hello))
+                .register_transaction(transaction!(loadtest_static))
+            )
+            .execute()
+            .await?;
 
-    maybe_copy_to_gcs(options.bucket, options.report_name, options.log_dir).await?;
+        maybe_copy_to_gcs(&options.bucket, &options.report_name, &options.log_dir, i).await?;
+        print!("Completed iteration {}", i);
+    }
 
     Ok(()) 
 }
