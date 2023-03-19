@@ -1,6 +1,6 @@
 use cloud_storage::client::Client;
 use goose::{prelude::*, config, logger::GooseLogFormat};
-use std::{result::Result, error::Error, fs, path::{Path, PathBuf}, io};
+use std::{result::Result, error::Error, fs, path::{Path, PathBuf}, io, time::Duration};
 
 const REQUEST_LOG_FORMAT: GooseLogFormat = GooseLogFormat::Csv;
 
@@ -116,7 +116,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     maybe_prep_log_dir(&options.log_dir, &options.report_name)?;
 
     for i in 1..iterations_end {
-        print!("Commencing iteration {}", i);
+        println!("Commencing iteration {}", i);
         let mut configuration = config::GooseConfiguration::default();
         configuration.host = options.host.clone();
         configuration.report_file = report_log_path(&options.log_dir, &options.report_name, i).to_str().unwrap().to_string();
@@ -137,7 +137,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .await?;
 
         maybe_copy_to_gcs(&options.bucket, &options.report_name, &options.log_dir, i).await?;
-        print!("Completed iteration {}", i);
+        println!("Completed iteration {}", i);
+
+        if i < (iterations_end - 1) {
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
     }
 
     Ok(()) 
