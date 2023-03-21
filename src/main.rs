@@ -14,7 +14,6 @@ static APP_USER_AGENT: &str = "http-load-tester/0.0.1";
 async fn configure_user_without_compression(user: &mut GooseUser) -> TransactionResult {
     let builder = reqwest::Client::builder()
         .user_agent(APP_USER_AGENT)
-        .cookie_store(true)
         .no_brotli()
         .no_gzip()
         .timeout(Duration::from_secs(10));
@@ -25,7 +24,6 @@ async fn configure_user_without_compression(user: &mut GooseUser) -> Transaction
 async fn configure_user_with_compression(user: &mut GooseUser) -> TransactionResult {
     let builder = reqwest::Client::builder()
         .user_agent(APP_USER_AGENT)
-        .cookie_store(true)
         .brotli(true)
         .gzip(true)
         .timeout(Duration::from_secs(10));
