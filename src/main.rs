@@ -4,10 +4,10 @@ use std::{result::Result, error::Error, fs, path::{Path, PathBuf}, io, time::Dur
 
 const REQUEST_LOG_FORMAT: GooseLogFormat = GooseLogFormat::Csv;
 
-async fn loadtest_hello(user: &mut GooseUser) -> TransactionResult {
-    let _goose_metrics = user.get("/hello").await?;
-    let _goose_metrics = user.get("/hello?name=world").await?;
-    let _goose_metrics = user.get("/hello?name=supercalifragilisticexpialidocious%20supercalifragilisticexpialidocious%20supercalifragilisticexpialidocious%20supercalifragilisticexpialidocious%20supercalifragilisticexpialidocious").await?;
+async fn loadtest_strings(user: &mut GooseUser) -> TransactionResult {
+    let _goose_metrics = user.get("/strings/hello").await?;
+    let _goose_metrics = user.get("/strings/hello?name=cool%20gal").await?;
+    let _goose_metrics = user.get("/strings/async-hello").await?;
 
     Ok(())
 }
@@ -15,6 +15,13 @@ async fn loadtest_hello(user: &mut GooseUser) -> TransactionResult {
 async fn loadtest_static(user: &mut GooseUser) -> TransactionResult {
     let _goose_metrics = user.get("/static/basic.html").await?;
     let _goose_metrics = user.get("/static/scout.webp").await?;
+
+    Ok(())
+}
+
+async fn loadtest_math(user: &mut GooseUser) -> TransactionResult {
+    let _goose_metrics = user.get("/math/power-reciprocals-alt?n=1000").await?;
+    let _goose_metrics = user.get("/math/power-reciprocals-alt?n=10000000").await?;
 
     Ok(())
 }
@@ -130,8 +137,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         GooseAttack::initialize_with_config(configuration)?
             .register_scenario(scenario!("LoadtestTransactions")
-                .register_transaction(transaction!(loadtest_hello))
+                .register_transaction(transaction!(loadtest_strings))
                 .register_transaction(transaction!(loadtest_static))
+                .register_transaction(transaction!(loadtest_math))
             )
             .execute()
             .await?;
