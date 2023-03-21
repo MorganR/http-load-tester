@@ -3,6 +3,18 @@ use goose::{prelude::*, config, logger::GooseLogFormat};
 use std::{result::Result, error::Error, fs, path::{Path, PathBuf}, io, time::Duration};
 
 const REQUEST_LOG_FORMAT: GooseLogFormat = GooseLogFormat::Csv;
+static APP_USER_AGENT: &str = "http-load-tester/0.0.1";
+
+async fn configure_user(user: &mut GooseUser) -> TransactionResult {
+    let builder = reqwest::Client::builder()
+        .user_agent(APP_USER_AGENT)
+        .cookie_store(true)
+        .gzip(true)
+        .brotli(true)
+        .timeout(Duration::from_secs(10));
+    user.set_client_builder(builder).await?;
+    Ok(())
+}
 
 async fn loadtest_strings(user: &mut GooseUser) -> TransactionResult {
     let _goose_metrics = user.get("/strings/hello").await?;
@@ -128,8 +140,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let mut configuration = config::GooseConfiguration::default();
         configuration.host = options.host.clone();
         configuration.report_file = report_log_path(&options.log_dir, &options.report_name, i).to_str().unwrap().to_string();
-        // Max 10 second timeout per request.
-        configuration.timeout = Some("10".to_string());
         configuration.users = Some(options.users);
         configuration.startup_time = options.start_time.clone();
         configuration.run_time = options.run_time.clone();
@@ -138,9 +148,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         GooseAttack::initialize_with_config(configuration)?
             .register_scenario(scenario!("LoadtestTransactions")
-                .register_transaction(transaction!(loadtest_strings))
-                .register_transaction(transaction!(loadtest_static))
-                .register_transaction(transaction!(loadtest_math))
+                .register_transaction(transaction!(configure_user).set_on_start())
+                .register_transaction(transaction!(loadtest_strings).set_name("strings"))
+                .register_transaction(transaction!(loadtest_static).set_name("static"))
+                .register_transaction(transaction!(loadtest_math).set_name("math"))
             )
             .execute()
             .await?;
