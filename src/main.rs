@@ -8,6 +8,7 @@ async fn loadtest_strings(user: &mut GooseUser) -> TransactionResult {
     let _goose_metrics = user.get("/strings/hello").await?;
     let _goose_metrics = user.get("/strings/hello?name=cool%20gal").await?;
     let _goose_metrics = user.get("/strings/async-hello").await?;
+    let _goose_metrics = user.get("/strings/lines?n=10000").await?;
 
     Ok(())
 }
